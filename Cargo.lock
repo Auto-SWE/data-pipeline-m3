@@ -177,6 +177,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "clap",
+ "regex",
  "sanitize-filename",
  "serde",
  "serde_json",
