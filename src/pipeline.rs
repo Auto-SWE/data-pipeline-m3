@@ -67,10 +67,14 @@ pub fn run_pipeline(args: Args) -> Result<()> {
     let mut writer = open_jsonl_writer(&args.output, args.resume)?;
 
     let mut processed: usize = 0;
-    while let Some(row) = reader.next_row::<RawRecordRow>()? {
+    loop {
         if args.limit != 0 && processed >= args.limit {
             break;
         }
+
+        let Some(row) = reader.next_row::<RawRecordRow>()? else {
+            break;
+        };
 
         let id = format!("primevul-{}", row.idx);
 
