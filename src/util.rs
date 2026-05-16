@@ -35,7 +35,7 @@ pub fn run_and_yield(cmd: &mut Command) -> Result<String> {
         .output()
         .with_context(|| format!("failed to start command: {rendered}"))?;
 
-    if output.status.success() {
+    if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
 
