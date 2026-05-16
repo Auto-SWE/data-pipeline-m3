@@ -1,6 +1,9 @@
 use anyhow::{Context, Result, bail};
+use regex::Regex;
 use std::process::{Command, Output};
 use url::Url;
+
+use crate::types::Language;
 
 pub fn run_ok(cmd: &mut Command) -> Result<()> {
     let rendered = format!("{cmd:?}");
@@ -69,4 +72,58 @@ pub fn repo_name_from_url(project_url: &str) -> Option<String> {
         .next()
         .map(|name| name.trim_end_matches(".git").to_string())
         .filter(|name| !name.is_empty())
+}
+
+pub fn clean_optional_string(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .filter(|s| !s.eq_ignore_ascii_case("none"))
+        .filter(|s| !s.eq_ignore_ascii_case("null"))
+        .map(ToOwned::to_owned)
+}
+
+pub fn extract_function_name(code: &str) -> Option<String> {
+    let re = Regex::new(
+        r"(?m)([A-Za-z_~][A-Za-z0-9_:~]*)\s*\([^;{}]*\)\s*(?:const\s*)?(?:noexcept\s*)?(?:->\s*[^{}]+)?\{",
+    )
+    .ok()?;
+
+    let raw = re.captures(code)?.get(1)?.as_str();
+    let short = raw.rsplit("::").next().unwrap_or(raw).trim();
+
+    if short.is_empty() {
+        None
+    } else {
+        Some(short.trim_start_matches('~').to_string())
+    }
+}
+
+pub fn infer_language(file_path: Option<&str>, code: &str) -> Language {
+    if let Some(path) = file_path.map(|p| p.to_ascii_lowercase()) {
+        if path.ends_with(".cpp")
+            || path.ends_with(".cc")
+            || path.ends_with(".cxx")
+            || path.ends_with(".hpp")
+            || path.ends_with(".hh")
+            || path.ends_with(".hxx")
+        {
+            return Language::Cpp;
+        }
+
+        if path.ends_with(".c") || path.ends_with(".h") {
+            return Language::C;
+        }
+    }
+
+    if code.contains("::")
+        || code.contains("template <")
+        || code.contains("std::")
+        || code.contains("class ")
+        || code.contains("namespace ")
+    {
+        Language::Cpp
+    } else {
+        Language::C
+    }
 }
