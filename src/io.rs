@@ -49,59 +49,59 @@ impl JsonlReader {
             return Ok(Some(row));
         }
     }
+}
 
-    pub fn open_jsonl_writer(path: &Path, append: bool) -> Result<BufWriter<File>> {
-        let mut open = OpenOptions::new();
-        open.create(true).write(true);
+pub fn open_jsonl_writer(path: &Path, append: bool) -> Result<BufWriter<File>> {
+    let mut open = OpenOptions::new();
+    open.create(true).write(true);
 
-        if append {
-            open.append(true);
-        } else {
-            open.truncate(true);
-        }
-
-        let file = open
-            .open(path)
-            .with_context(|| format!("open output {:?}", path))?;
-
-        Ok(BufWriter::new(file))
+    if append {
+        open.append(true);
+    } else {
+        open.truncate(true);
     }
 
-    pub fn write_jsonl<T, W>(writer: &mut W, value: &T) -> Result<()>
-    where
-        T: Serialize,
-        W: Write,
-    {
-        serde_json::to_writer(&mut *writer, value).context("write JSON object")?;
-        writeln!(writer).context("write JSONL newline")?;
-        writer.flush().context("flush JSONL writer")?;
+    let file = open
+        .open(path)
+        .with_context(|| format!("open output {:?}", path))?;
 
-        Ok(())
+    Ok(BufWriter::new(file))
+}
+
+pub fn write_jsonl<T, W>(writer: &mut W, value: &T) -> Result<()>
+where
+    T: Serialize,
+    W: Write,
+{
+    serde_json::to_writer(&mut *writer, value).context("write JSON object")?;
+    writeln!(writer).context("write JSONL newline")?;
+    writer.flush().context("flush JSONL writer")?;
+
+    Ok(())
+}
+
+pub fn read_existing_ids(path: &Path) -> Result<HashSet<String>> {
+    let mut ids = HashSet::new();
+
+    if !path.exists() {
+        return Ok(ids);
     }
 
-    pub fn read_existing_ids(path: &Path) -> Result<HashSet<String>> {
-        let mut ids = HashSet::new();
+    let file = File::open(path).with_context(|| format!("open existing output {:?}", path))?;
 
-        if !path.exists() {
-            return Ok(ids);
+    for line in BufReader::new(file).lines() {
+        let line = line?;
+
+        if line.trim().is_empty() {
+            continue;
         }
 
-        let file = File::open(path).with_context(|| format!("open existing output {:?}", path))?;
-
-        for line in BufReader::new(file).lines() {
-            let line = line?;
-
-            if line.trim().is_empty() {
-                continue;
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) {
+            if let Some(id) = value.get("id").and_then(|v| v.as_str()) {
+                ids.insert(id.to_string());
             }
-
-            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) {
-                if let Some(id) = value.get("id").and_then(|v| v.as_str()) {
-                    ids.insert(id.to_string());
-                }
-            }
         }
-
-        Ok(ids)
     }
+
+    Ok(ids)
 }
