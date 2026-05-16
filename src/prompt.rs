@@ -4,9 +4,9 @@ use std::fmt::{Display, Write as _};
 const TASK: &str =
     "Task: Decide whether the following C/C++ function contains a security vulnerability.";
 const CODE_SECTION: &str = "[CODE]";
-const CPG_SECTION: &str = "[CPG SUMMARY]";
-const MAX_CALLS: usize = 80;
-const MAX_CONTROL_STRUCTURES: usize = 20;
+const CPG_SECTION: &str = "[STATIC CONTEXT]";
+const MAX_SELECTED_CALLS: usize = 6;
+const MAX_CALLERS: usize = 3;
 
 pub fn build_feed_text(input: &ModelInput) -> String {
     let mut out = String::new();
@@ -63,13 +63,8 @@ fn write_joern_summary(out: &mut String, j: &JoernSummary) {
     flag(out, "has_sizeof", j.has_sizeof);
 
     write_list(out, "unsafe_or_sensitive_calls", &j.unsafe_callees);
-    write_limited_list(out, "calls", &j.callees, MAX_CALLS);
-    write_bullets(
-        out,
-        "control_structures",
-        &j.control_structures,
-        MAX_CONTROL_STRUCTURES,
-    );
+    write_selected_calls(out, j);
+    write_caller_contexts(out, j);
 }
 
 fn line(out: &mut String, value: &str) {
@@ -98,30 +93,52 @@ fn write_list(out: &mut String, key: &str, values: &[String]) {
     }
 }
 
-fn write_limited_list(out: &mut String, key: &str, values: &[String], limit: usize) {
-    if values.is_empty() {
+fn write_selected_calls(out: &mut String, j: &JoernSummary) {
+    if j.selected_calls.is_empty() {
         return;
     }
 
-    let joined = values
-        .iter()
-        .take(limit)
-        .map(String::as_str)
-        .collect::<Vec<_>>()
-        .join(", ");
+    let _ = writeln!(out, "selected_call_context:");
 
-    kv(out, key, joined);
+    for call in j.selected_calls.iter().take(MAX_SELECTED_CALLS) {
+        let line = call
+            .line_number
+            .map(|n| format!(" line {n}"))
+            .unwrap_or_default();
+        let _ = writeln!(out, "- {}{}: {}", call.callee, line, call.code);
+
+        if !call.arguments.is_empty() {
+            kv(out, "  arguments", call.arguments.join(", "));
+        }
+
+        if !call.guard_context.is_empty() {
+            kv(out, "  guarded_by", call.guard_context.join(" | "));
+        }
+
+        kv(out, "  reason", &call.reason);
+    }
 }
 
-fn write_bullets(out: &mut String, title: &str, values: &[String], limit: usize) {
-    if values.is_empty() {
+fn write_caller_contexts(out: &mut String, j: &JoernSummary) {
+    if j.caller_contexts.is_empty() {
         return;
     }
 
-    let _ = writeln!(out, "{title}:");
+    let _ = writeln!(out, "selected_caller_context:");
 
-    for value in values.iter().take(limit) {
-        let _ = writeln!(out, "- {value}");
+    for caller in j.caller_contexts.iter().take(MAX_CALLERS) {
+        let line = caller
+            .line_number
+            .map(|n| format!(" line {n}"))
+            .unwrap_or_default();
+        let _ = writeln!(out, "- {}{}: {}", caller.caller, line, caller.code);
+
+        if !caller.arguments.is_empty() {
+            kv(out, "  arguments", caller.arguments.join(", "));
+        }
+
+        if !caller.guard_context.is_empty() {
+            kv(out, "  guarded_by", caller.guard_context.join(" | "));
+        }
     }
 }
-
