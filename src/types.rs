@@ -73,7 +73,6 @@ pub struct ModelInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LabelData {
-    pub target: i32,
     pub vulnerable: bool,
 }
 
@@ -86,7 +85,7 @@ pub enum Language {
 }
 
 impl Language {
-    fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             Language::C => "c",
             Language::Cpp => "cpp",
