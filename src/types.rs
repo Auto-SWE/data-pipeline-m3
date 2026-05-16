@@ -1,4 +1,5 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::Value;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -13,6 +14,7 @@ pub struct RawRecordRow {
     pub func: String,
     pub func_hash: u128,
     pub file_name: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_string")]
     pub file_hash: Option<String>,
     pub cwe: Vec<String>,
     pub cve: Option<String>,
@@ -106,6 +108,8 @@ pub struct JoernSummary {
     pub local_types: Vec<String>,
     pub callees: Vec<String>,
     pub unsafe_callees: Vec<String>,
+    pub selected_calls: Vec<SelectedCallContext>,
+    pub caller_contexts: Vec<CallerContext>,
     pub operators: Vec<String>,
     pub control_structures: Vec<String>,
     pub cyclomatic_complexity: u32,
@@ -116,9 +120,44 @@ pub struct JoernSummary {
     pub has_sizeof: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SelectedCallContext {
+    pub callee: String,
+    pub line_number: Option<u32>,
+    pub code: String,
+    pub arguments: Vec<String>,
+    pub guard_context: Vec<String>,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CallerContext {
+    pub caller: String,
+    pub caller_file: Option<String>,
+    pub line_number: Option<u32>,
+    pub code: String,
+    pub arguments: Vec<String>,
+    pub guard_context: Vec<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct RepoCheckout {
     pub key: String,
     pub path: PathBuf,
     pub parent_commit: String,
+}
+
+fn deserialize_optional_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Option::<Value>::deserialize(deserializer)?;
+
+    Ok(match value {
+        None | Some(Value::Null) => None,
+        Some(Value::String(value)) => Some(value),
+        Some(Value::Number(value)) => Some(value.to_string()),
+        Some(Value::Bool(value)) => Some(value.to_string()),
+        Some(value) => Some(value.to_string()),
+    })
 }
