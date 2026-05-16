@@ -1,5 +1,6 @@
 use anyhow::{Context, Result, bail};
 use regex::Regex;
+use std::path::Path;
 use std::process::{Command, Output};
 use url::Url;
 
@@ -126,4 +127,44 @@ pub fn infer_language(file_path: Option<&str>, code: &str) -> Language {
     } else {
         Language::C
     }
+}
+
+pub fn path_to_string(path: &Path) -> String {
+    path.to_string_lossy().to_string()
+}
+
+pub fn is_unsafe_callee(name: &str) -> bool {
+    let n = name
+        .rsplit("::")
+        .next()
+        .unwrap_or(name)
+        .rsplit('.')
+        .next()
+        .unwrap_or(name)
+        .trim();
+
+    matches!(
+        n,
+        "gets"
+            | "strcpy"
+            | "strncpy"
+            | "strcat"
+            | "strncat"
+            | "sprintf"
+            | "vsprintf"
+            | "scanf"
+            | "sscanf"
+            | "fscanf"
+            | "memcpy"
+            | "memmove"
+            | "memset"
+            | "malloc"
+            | "calloc"
+            | "realloc"
+            | "free"
+            | "read"
+            | "recv"
+            | "recvfrom"
+            | "fread"
+    )
 }
