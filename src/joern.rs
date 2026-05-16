@@ -1,5 +1,5 @@
 use crate::pipeline::Args;
-use crate::types::{JoernSummary, RepoCheckout};
+use crate::types::{JoernSummary, RepoCheckout, SelectedCallContext};
 use crate::util::{is_unsafe_callee, path_to_string, run_ok};
 
 use anyhow::{Context, Result, bail};
@@ -135,6 +135,12 @@ pub fn query_joern(
             .unwrap_or(false);
 
     let has_unsafe_c_call = !unsafe_callees.is_empty();
+    let mut selected_calls: Vec<SelectedCallContext> =
+        parse_json_field(fields.get("SELECTED_CALLS_JSON"))?;
+
+    if selected_calls.is_empty() {
+        selected_calls = selected_calls_from_callees(&callees, raw_code);
+    }
 
     Ok(JoernSummary {
         matched,
@@ -150,6 +156,8 @@ pub fn query_joern(
         local_types: parse_list(fields.get("LOCAL_TYPES")),
         callees,
         unsafe_callees,
+        selected_calls,
+        caller_contexts: parse_json_field(fields.get("CALLER_CONTEXTS_JSON"))?,
         operators,
         control_structures,
         cyclomatic_complexity,
@@ -192,4 +200,147 @@ fn opt_field(value: Option<&String>) -> Option<String> {
         .map(|s| s.trim())
         .filter(|s| !s.is_empty() && *s != "none")
         .map(ToOwned::to_owned)
+}
+
+fn parse_json_field<T>(value: Option<&String>) -> Result<Vec<T>>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let Some(value) = value.map(|s| s.trim()).filter(|s| !s.is_empty()) else {
+        return Ok(Vec::new());
+    };
+
+    if value == "none" {
+        return Ok(Vec::new());
+    }
+
+    serde_json::from_str(value).context("parse Joern JSON field")
+}
+
+fn selected_calls_from_callees(callees: &[String], raw_code: &str) -> Vec<SelectedCallContext> {
+    let mut candidates = callees
+        .iter()
+        .filter(|callee| {
+            is_security_relevant_callee(callee)
+                && (has_raw_call(raw_code, callee) || is_unsafe_callee(callee))
+        })
+        .collect::<Vec<_>>();
+
+    candidates.sort_by_key(|callee| if is_unsafe_callee(callee) { 0 } else { 1 });
+
+    candidates
+        .into_iter()
+        .take(6)
+        .map(|callee| {
+            let code = find_call_line(raw_code, callee).unwrap_or_else(|| callee.to_string());
+            let arguments = extract_call_arguments(&code, callee);
+
+            SelectedCallContext {
+                callee: callee.clone(),
+                line_number: None,
+                code,
+                arguments,
+                guard_context: Vec::new(),
+                reason: selected_call_reason(callee).to_string(),
+            }
+        })
+        .collect()
+}
+
+fn is_security_relevant_callee(name: &str) -> bool {
+    if name.starts_with("<operator>") {
+        return false;
+    }
+
+    is_unsafe_callee(name) || has_security_word(name)
+}
+
+fn selected_call_reason(name: &str) -> &'static str {
+    if is_unsafe_callee(name) {
+        "sensitive_api"
+    } else {
+        "security_relevant_name"
+    }
+}
+
+fn has_security_word(value: &str) -> bool {
+    let value = value.to_ascii_lowercase();
+    [
+        "alloc", "auth", "bound", "buf", "copy", "decode", "free", "len", "limit", "mem", "packet",
+        "parse", "read", "recv", "size", "str", "user", "valid", "version", "write",
+    ]
+    .iter()
+    .any(|word| value.contains(word))
+}
+
+fn find_call_line(raw_code: &str, callee: &str) -> Option<String> {
+    let needle = format!("{callee}(");
+
+    raw_code
+        .lines()
+        .map(str::trim)
+        .find(|line| line.contains(&needle))
+        .map(ToOwned::to_owned)
+}
+
+fn has_raw_call(raw_code: &str, callee: &str) -> bool {
+    raw_code.contains(&format!("{callee}("))
+}
+
+fn extract_call_arguments(code: &str, callee: &str) -> Vec<String> {
+    let Some(start) = code.find(&format!("{callee}(")) else {
+        return Vec::new();
+    };
+
+    let args_start = start + callee.len() + 1;
+    let mut depth = 0usize;
+    let mut end = None;
+
+    for (offset, ch) in code[args_start..].char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' if depth == 0 => {
+                end = Some(args_start + offset);
+                break;
+            }
+            ')' => depth -= 1,
+            _ => {}
+        }
+    }
+
+    let Some(end) = end else {
+        return Vec::new();
+    };
+
+    split_arguments(&code[args_start..end])
+}
+
+fn split_arguments(args: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut start = 0usize;
+    let mut depth = 0usize;
+
+    for (idx, ch) in args.char_indices() {
+        match ch {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' if depth > 0 => depth -= 1,
+            ',' if depth == 0 => {
+                push_arg(&mut out, &args[start..idx]);
+                start = idx + 1;
+            }
+            _ => {}
+        }
+    }
+
+    push_arg(&mut out, &args[start..]);
+    out.truncate(6);
+    out
+}
+
+fn push_arg(out: &mut Vec<String>, arg: &str) {
+    let arg = arg.trim();
+
+    if !arg.is_empty() {
+        out.push(arg.to_string());
+    }
 }
