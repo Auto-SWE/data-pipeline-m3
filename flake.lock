@@ -1,0 +1,41 @@
+{
+  "nodes": {
+    "joern-cli": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1778221522,
+        "narHash": "sha256-D9r7hoRJkPrnPKv7fnzflbX1R7yf3VcRvDSfmeD12Gk=",
+        "type": "tarball",
+        "url": "https://github.com/joernio/joern/releases/download/v4.0.536/joern-cli.zip"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://github.com/joernio/joern/releases/download/v4.0.536/joern-cli.zip"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1778443072,
+        "narHash": "sha256-zi7/fsqM/kFdNuED//4WOCUtezGtKKqRNORjMvfwjnA=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "da5ad661ba4e5ef59ba743f0d112cbc30e474f32",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "joern-cli": "joern-cli",
+        "nixpkgs": "nixpkgs"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
